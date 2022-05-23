@@ -52,6 +52,24 @@ async function run() {
             res.send({ result, token });
         })
 
+        //set admin
+        app.put('/user/admin/:email', verifyJWT, async (req, res) => {
+            const email = req.params.email;
+            const filter = { email: email }
+            const updateDoc = {
+                $set: { role: 'admin' },
+            };
+            const result = await userCollection.updateOne(filter, updateDoc)
+            res.send(result);
+        })
+
+        //get users in dashboard
+
+        app.get('/user', verifyJWT, async (req, res) => {
+            const users = await userCollection.find().toArray();
+            res.send(users);
+        });
+
         //Get Tools
         app.get("/tools", async (req, res) => {
             const tools = await toolsCollection.find({}).toArray();
@@ -79,8 +97,27 @@ async function run() {
             return res.send({ success: true, result });
         })
 
+        //get orders 
+        app.get('/orders', verifyJWT, async (req, res) => {
+            const user = req.query.user;
+            const decodedEmail = req.decoded.email
+            if (user === decodedEmail) {
+                const query = { user: user };
+                const orders = await ordersCollection.find(query).toArray();
+                return res.send(orders);
+            }
+            else {
+                return res.status(403).send({ message: "access is denied" });
+            }
+        })
 
-
+        //delete order item
+        app.delete('/orders/:id', async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: ObjectId(id) };
+            const result = await ordersCollection.deleteOne(query);
+            res.send(result);
+        })
 
     } finally {
 
