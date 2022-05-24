@@ -36,6 +36,17 @@ async function run() {
         const userCollection = client.db('manufacturer').collection('users');
         const ordersCollection = client.db('manufacturer').collection('orders');
 
+        const verifyAdmin = async (req, res, next) => {
+            const requester = req.decoded.email;
+            const requesterAccount = await userCollection.findOne({ email: requester });
+            if (requesterAccount.role === 'admin') {
+              next();
+            }
+            else {
+              res.status(403).send({ message: 'forbidden' });
+            }
+          }
+
 
 
         //set user in Database
@@ -53,22 +64,31 @@ async function run() {
         })
 
         //set admin
-        app.put('/user/admin/:email', verifyJWT, async (req, res) => {
+        app.put('/user/admin/:email', verifyJWT,verifyAdmin, async (req, res) => {
             const email = req.params.email;
-            const filter = { email: email }
-            const updateDoc = {
-                $set: { role: 'admin' },
-            };
-            const result = await userCollection.updateOne(filter, updateDoc)
-            res.send(result);
+                const filter = { email: email }
+                const updateDoc = {
+                    $set: { role: 'admin' },
+                };
+                const result = await userCollection.updateOne(filter, updateDoc)
+                res.send( result );
         })
+
+
+        app.get('/admin/:email', async (req, res) => {
+            const email = req.params.email;
+            const user = await userCollection.findOne({email: email});
+            const isAdmin = user.role === 'admin'
+            res.send({admin: isAdmin});
+          });
+
 
         //get users in dashboard
 
-        app.get('/user', verifyJWT, async (req, res) => {
+        app.get('/user',verifyJWT, async (req, res) => {
             const users = await userCollection.find().toArray();
             res.send(users);
-        });
+          });
 
         //Get Tools
         app.get("/tools", async (req, res) => {
@@ -85,20 +105,27 @@ async function run() {
         });
 
 
-        // post orders
-        app.post('/orders', async (req, res) => {
+        //post orders & Tools availablity update
+        app.patch('/order/:id',  async(req, res) =>{
+            const id  = req.params.id;
             const order = req.body;
-            const query = { tool: order.tool, user: order.user }
-            const exists = await ordersCollection.findOne(query);
-            if (exists) {
-                return res.send({ success: false, data: exists })
+            console.log(order)
+            const filter = {_id: ObjectId(id)};
+            const updatedDoc = {
+              $set: {
+                availableQuantity: order.newQuan,
+                
+              }
             }
+        
             const result = await ordersCollection.insertOne(order);
-            return res.send({ success: true, result });
-        })
+            const updatedTools = await toolsCollection.updateOne(filter, updatedDoc);
+            // sendPaymentConfirmationEmail(payment)
+            res.send(updatedTools);
+          })
 
         //get orders 
-        app.get('/orders', verifyJWT, async (req, res) => {
+        app.get('/order', verifyJWT, async (req, res) => {
             const user = req.query.user;
             const decodedEmail = req.decoded.email
             if (user === decodedEmail) {
@@ -110,6 +137,16 @@ async function run() {
                 return res.status(403).send({ message: "access is denied" });
             }
         })
+
+        //get orders by Id
+        app.get('/order/:id', verifyJWT, async (req, res) => {
+            const id = req.params.id;
+              const query = {_id: ObjectId(id)};
+              const orders = await ordersCollection.findOne(query);
+              res.send(orders)
+  
+          })
+  
 
         //delete order item
         app.delete('/orders/:id', async (req, res) => {
