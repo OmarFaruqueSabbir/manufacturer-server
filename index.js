@@ -38,6 +38,7 @@ async function run() {
         const userCollection = client.db('manufacturer').collection('users');
         const ordersCollection = client.db('manufacturer').collection('orders');
         const paymentCollection = client.db('manufacturer').collection('payments')
+        const profilesCollection = client.db('manufacturer').collection('profiles')
 
         const verifyAdmin = async (req, res, next) => {
             const requester = req.decoded.email;
@@ -141,10 +142,40 @@ async function run() {
             res.send(reviews);
         });
 
-        //POST
+        //POST Review
         app.post('/reviews', async (req, res) => {
             const newReview = req.body;
             const result = await reviewsCollection.insertOne(newReview);
+            res.send(result);
+        });
+
+        //get profile 
+        app.get("/profiles", verifyJWT, async (req, res) => {
+            let query
+            const user = req.query.user
+            const decodedEmail = req.decoded.email
+            if (user) {
+                if (user === decodedEmail) {
+                    query = { user: user }
+                    const cursor = profilesCollection.find(query);
+                    const result = await cursor.toArray();
+                    res.send(result);
+                } else {
+                    res.send({ success: 'Access Denied' })
+                }
+
+            } else {
+                query = {}
+                const cursor = profilesCollection.find(query);
+                const result = await cursor.toArray();
+                res.send(result);
+            }
+        });
+
+        //POST
+        app.post('/profiles', async (req, res) => {
+            const newProfile = req.body;
+            const result = await profilesCollection.insertOne(newProfile);
             res.send(result);
         });
 
