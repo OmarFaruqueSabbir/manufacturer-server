@@ -10,6 +10,7 @@ app.use(express.json())
 
 
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.a2urmj8.mongodb.net/?retryWrites=true&w=majority`;
 const client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true, serverApi: ServerApiVersion.v1 });
 
@@ -32,20 +33,35 @@ async function run() {
     try {
         await client.connect();
         const toolsCollection = client.db('manufacturer').collection('tools');
+        const reviewsCollection = client.db('manufacturer').collection('reviews');
         console.log('Database Connected!')
         const userCollection = client.db('manufacturer').collection('users');
         const ordersCollection = client.db('manufacturer').collection('orders');
+        const paymentCollection = client.db('manufacturer').collection('payments')
 
         const verifyAdmin = async (req, res, next) => {
             const requester = req.decoded.email;
             const requesterAccount = await userCollection.findOne({ email: requester });
             if (requesterAccount.role === 'admin') {
-              next();
+                next();
             }
             else {
-              res.status(403).send({ message: 'forbidden' });
+                res.status(403).send({ message: 'forbidden' });
             }
-          }
+        }
+
+        app.post('/create-payment-intent', verifyJWT, async (req, res) => {
+            const service = req.body;
+            const price = service.price;
+            const amount = price * 100;
+            const paymentIntent = await stripe.paymentIntents.create({
+                amount: amount,
+                currency: 'usd',
+                payment_method_types: ['card']
+            });
+            res.send({ clientSecret: paymentIntent.client_secret })
+        })
+
 
 
 
@@ -63,32 +79,32 @@ async function run() {
             res.send({ result, token });
         })
 
-        //set admin
-        app.put('/user/admin/:email', verifyJWT,verifyAdmin, async (req, res) => {
-            const email = req.params.email;
-                const filter = { email: email }
-                const updateDoc = {
-                    $set: { role: 'admin' },
-                };
-                const result = await userCollection.updateOne(filter, updateDoc)
-                res.send( result );
-        })
-
 
         app.get('/admin/:email', async (req, res) => {
             const email = req.params.email;
-            const user = await userCollection.findOne({email: email});
-            const isAdmin = user.role === 'admin'
-            res.send({admin: isAdmin});
-          });
+            const user = await userCollection.findOne({ email: email });
+            const isAdmin = user.role === 'admin';
+            res.send({ admin: isAdmin })
+          })
+      
+        //set admin
+          app.put('/user/admin/:email', verifyJWT, verifyAdmin, async (req, res) => {
+            const email = req.params.email;
+            const filter = { email: email };
+            const updateDoc = {
+              $set: { role: 'admin' },
+            };
+            const result = await userCollection.updateOne(filter, updateDoc);
+            res.send(result);
+          })
 
 
         //get users in dashboard
 
-        app.get('/user',verifyJWT, async (req, res) => {
+        app.get('/user', verifyJWT, async (req, res) => {
             const users = await userCollection.find().toArray();
             res.send(users);
-          });
+        });
 
         //Get Tools
         app.get("/tools", async (req, res) => {
@@ -104,52 +120,107 @@ async function run() {
             res.send(tool);
         });
 
+        //Get Reviews
+        app.get("/reviews", async (req, res) => {
+            const reviews = await reviewsCollection.find({}).toArray();
+            res.send(reviews);
+        });
+
+        //POST
+        app.post('/reviews', async (req, res) => {
+            const newReview = req.body;
+            const result = await reviewsCollection.insertOne(newReview);
+            res.send(result);
+        });
 
         //post orders & Tools availablity update
-        app.patch('/order/:id',  async(req, res) =>{
-            const id  = req.params.id;
+        app.patch('/order/:id', async (req, res) => {
+            const id = req.params.id;
             const order = req.body;
             console.log(order)
-            const filter = {_id: ObjectId(id)};
+
+            const filter = { _id: ObjectId(id) };
             const updatedDoc = {
-              $set: {
-                availableQuantity: order.newQuan,
-                
-              }
+                $set: {
+                    availableQuantity: order.newQuan,
+                }
             }
-        
-            const result = await ordersCollection.insertOne(order);
+
+            const result = await ordersCollection.insertOne(order.order);
             const updatedTools = await toolsCollection.updateOne(filter, updatedDoc);
             // sendPaymentConfirmationEmail(payment)
             res.send(updatedTools);
-          })
+        })
 
         //get orders 
-        app.get('/order', verifyJWT, async (req, res) => {
-            const user = req.query.user;
+        // app.get('/order', verifyJWT, async (req, res) => {
+        //     const user = req.query.user;
+        //     const decodedEmail = req.decoded.email
+        //     if (user === decodedEmail) {
+        //         const query = { user: user };
+        //         const orders = await ordersCollection.find(query).toArray();
+        //         return res.send(orders);
+        //     }
+        //     else {
+        //         return res.status(403).send({ message: "access is denied" });
+        //     }
+        // })
+
+        app.get("/order",verifyJWT, async (req, res) => {
+            let query
+            const user = req.query.user
             const decodedEmail = req.decoded.email
-            if (user === decodedEmail) {
-                const query = { user: user };
-                const orders = await ordersCollection.find(query).toArray();
-                return res.send(orders);
+            if (user) {
+                if (user === decodedEmail) {
+                    query = { user: user }
+                    const cursor = ordersCollection.find(query);
+                    const result = await cursor.toArray();
+                    res.send(result);
+                } else {
+                    res.send({ success: 'Access Denied' })
+                }
+
+            } else {
+                query = {}
+                const cursor = ordersCollection.find(query);
+                const result = await cursor.toArray();
+                res.send(result);
             }
-            else {
-                return res.status(403).send({ message: "access is denied" });
-            }
-        })
+        });
+    
+
+
+        
 
         //get orders by Id
         app.get('/order/:id', verifyJWT, async (req, res) => {
             const id = req.params.id;
-              const query = {_id: ObjectId(id)};
-              const orders = await ordersCollection.findOne(query);
-              res.send(orders)
-  
-          })
-  
+            const query = { _id: ObjectId(id) };
+            const orders = await ordersCollection.findOne(query);
+            res.send(orders)
+
+        })
+
+        //  
+        app.put('/order/:id', verifyJWT, async (req, res) => {
+            const id = req.params.id;
+            const payment = req.body;
+            const filter = { _id: ObjectId(id) };
+            const updatedDoc = {
+                $set: {
+                    paid: true,
+                    transactionId: payment.transactionId
+                }
+            }
+
+            const result = await paymentCollection.insertOne(payment);
+            const updatedBooking = await ordersCollection.updateOne(filter, updatedDoc);
+            res.send(updatedBooking);
+        })
+
 
         //delete order item
-        app.delete('/orders/:id', async (req, res) => {
+        app.delete('/order/:id', async (req, res) => {
             const id = req.params.id;
             const query = { _id: ObjectId(id) };
             const result = await ordersCollection.deleteOne(query);
