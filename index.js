@@ -85,18 +85,18 @@ async function run() {
             const user = await userCollection.findOne({ email: email });
             const isAdmin = user.role === 'admin';
             res.send({ admin: isAdmin })
-          })
-      
+        })
+
         //set admin
-          app.put('/user/admin/:email', verifyJWT, verifyAdmin, async (req, res) => {
+        app.put('/user/admin/:email', verifyJWT, verifyAdmin, async (req, res) => {
             const email = req.params.email;
             const filter = { email: email };
             const updateDoc = {
-              $set: { role: 'admin' },
+                $set: { role: 'admin' },
             };
             const result = await userCollection.updateOne(filter, updateDoc);
             res.send(result);
-          })
+        })
 
 
         //get users in dashboard
@@ -104,6 +104,13 @@ async function run() {
         app.get('/user', verifyJWT, async (req, res) => {
             const users = await userCollection.find().toArray();
             res.send(users);
+        });
+
+        //POST
+        app.post('/tools', async (req, res) => {
+            const newTool = req.body;
+            const result = await toolsCollection.insertOne(newTool);
+            res.send(result);
         });
 
         //Get Tools
@@ -119,6 +126,14 @@ async function run() {
             const tool = await toolsCollection.findOne(query);
             res.send(tool);
         });
+
+        //delete tools
+        app.delete('/tools/:id', async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: ObjectId(id) };
+            const result = await toolsCollection.deleteOne(query);
+            res.send(result);
+        })
 
         //Get Reviews
         app.get("/reviews", async (req, res) => {
@@ -153,7 +168,7 @@ async function run() {
         })
 
         //get orders 
-        app.get("/order",verifyJWT, async (req, res) => {
+        app.get("/order", verifyJWT, async (req, res) => {
             let query
             const user = req.query.user
             const decodedEmail = req.decoded.email
@@ -174,10 +189,10 @@ async function run() {
                 res.send(result);
             }
         });
-    
 
 
-        
+
+
 
         //get orders by Id
         app.get('/order/:id', verifyJWT, async (req, res) => {
