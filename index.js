@@ -179,6 +179,25 @@ async function run() {
             res.send(result);
         });
 
+        app.patch('/profiles/:id', async (req, res) => {
+            const id = req.params.id;
+            const profileUpdate = req.body;
+            console.log(profileUpdate)
+
+            const filter = { _id: ObjectId(id) };
+            const updatedDoc = {
+                $set: {
+                    education: profileUpdate.education,
+                    linkedIn: profileUpdate.linkedIn,
+                    location: profileUpdate.location,
+                    phone: profileUpdate.phone,
+                }
+            }
+
+            const updatedProfiles = await profilesCollection.updateOne(filter, updatedDoc);
+            res.send(updatedProfiles);
+        })
+
         //post orders & Tools availablity update
         app.patch('/order/:id', async (req, res) => {
             const id = req.params.id;
@@ -222,9 +241,6 @@ async function run() {
         });
 
 
-
-
-
         //get orders by Id
         app.get('/order/:id', verifyJWT, async (req, res) => {
             const id = req.params.id;
@@ -234,7 +250,7 @@ async function run() {
 
         })
 
-        //  
+        //updating  payment info
         app.put('/order/:id', verifyJWT, async (req, res) => {
             const id = req.params.id;
             const payment = req.body;
@@ -253,12 +269,12 @@ async function run() {
 
 
         //delete order item
-        app.delete('/order/:id', async (req, res) => {
-            const id = req.params.id;
-            const query = { _id: ObjectId(id) };
-            const result = await ordersCollection.deleteOne(query);
+        app.delete('/order/:email', async (req, res) => {
+            const email = req.params.email;
+            const filter = {user: email}
+            const result = await ordersCollection.deleteOne(filter);
             res.send(result);
-        })
+          });
 
     } finally {
 
